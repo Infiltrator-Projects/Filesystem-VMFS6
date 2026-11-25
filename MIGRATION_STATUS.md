@@ -13,3 +13,5 @@
 5. Qualify exact packaged Common V2 ABI, hosted and import-free freestanding profiles, then actual BOOT and kernel integration independently.
 
 All independent stages, PDF manual and packaging are pending. No runtime capability is claimed.
+
+The [design and qualification reference](docs/VMFS6.pdf) is available. It is not an operational manual; release and installation qualification remain pending.
