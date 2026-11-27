@@ -26,7 +26,7 @@ Independent VMFS6 images; reject VMFS3/5, incomplete extents and inconsistent lo
 
 ## 7. Technical references and provenance
 
-- [Technical reference (PDF)](docs/VMFS6.pdf) — original-format technical reference with historical appendices and [PDF stream source](docs/VMFS6.pdfstreams); not an operational manual.
+- [Technical reference (PDF)](docs/VMFS6.pdf) — original-format technical reference as one integrated manual and [PDF stream source](docs/VMFS6.pdfstreams); not an operational manual.
 
 - [Pinned central source baseline](https://github.com/Infiltrator-Projects/Filesystems/tree/101026021d9088d80b7f0f472d9061f0e2c688a3/native/filesystems/vmfs6)
 - [Native design](native/filesystems/vmfs6/DESIGN.md)

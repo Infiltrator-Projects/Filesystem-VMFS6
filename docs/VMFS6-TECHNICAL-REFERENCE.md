@@ -4,6 +4,8 @@
 
 VMFS6 was introduced with the VMware vSphere 6.5 generation. It extends the clustered datastore design with changes including allocation geometry, addressing and metadata layout. The evidence for this chapter is Weafon Tsao's vmfs6-tool fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source explicitly describes limited VMFS6 support. It is a reverse-engineered reader with inherited experimental mutation paths, not a complete vendor specification. Do not apply the older VMFS3/5 descriptor and directory layout to VMFS6 or infer complete compatibility from this source.
 
+VMFS6 was introduced with VMware vSphere 6.5. Earlier VMFS readers are not automatically compatible.
+
 ## Physical volume and filesystem information
 
 The observed partition-relative volume information begins at 0x100000, with little-endian magic 0xC001D00D at offset 0 and 32-bit volume version at 4. LUN byte is at 14, 28-byte name at 18, 32-bit physical-size field at 95 and 16-byte volume UUID at 130. The reference describes the physical-size field as scaled by 256; validate its unit against known media. The filesystem address space starts 0x1000000 bytes after the volume-information base. Within the assembled logical volume, filesystem information begins at 0x200000 and has magic 0x2FABF15E. For a single partition and first extent beginning at segment zero, that corresponds to partition byte 0x1300000. For a whole-disk image, add the actual partition start. Validate partition boundaries rather than assuming a legacy MBR.
@@ -64,8 +66,14 @@ VMFS is designed for simultaneous access by hypervisor hosts. Logical ownership,
 
 An independent writer requires exact native allocation transitions, metadata update ordering, durable flush and recovery semantics, and proven exclusion of every other host. Moving a file block changes its ownership and every reference; subblock and pointer-block relocation also changes catalogue metadata. An apparent free bitmap bit alone does not authorise reuse while another host may hold a valid reference. Formatting must establish coherent extent metadata, filesystem information, root descriptor, allocator catalogues, heartbeats and recovery state. The available reverse-engineering evidence does not establish complete native formatting, journal replay, distributed write or repair algorithms. Treat those operations as unqualified until they are independently demonstrated.
 
+## Implementation and qualification boundary
+
+The original central VMFS6 record was design-only; the pinned vmfs6-tool reader now supplies version-specific structure evidence. Reject VMFS3/5, incomplete extent sets and unknown ownership state; distributed locking and fencing require separate qualification.
+
+Common V2 is the independent provider interface: https://github.com/Infiltrator-Projects/Libraries/blob/main/docs/FILESYSTEM_COMMON_ABI_V2.md . Negotiate real operation masks and media profiles. Use bounded host I/O, exclusive unmounted ownership and durable flush for mutation; distinguish unsupported, corrupt, I/O and stale-handle results. Test Media and Defragmenter use the same engine. Hosted, freestanding, BOOT, kernel, recovery and package qualification are independent. Current capability and release status belongs to the repository README and exact-source qualification records; historical evidence is not a current status claim.
+
+Historical source or test reference: https://github.com/Infiltrator-Projects/Filesystems/tree/101026021d9088d80b7f0f472d9061f0e2c688a3/native/filesystems/vmfs6 .
+
 ## References and qualification
 
-Pinned evidence: https://github.com/weafon/vmfs6-tool/tree/84e094a16f92b1883f16c347ede4c0edadaf5290/libvmfs . Review vmfs_volume.c, vmfs_fs.c, vmfs_inode.c, vmfs_block.h, vmfs_bitmap.h, vmfs_dirent.c and vmfs_heartbeat.h. Use genuine VMFS6 images with different file sizes, directory pages, pointer types, sparse allocations, large file blocks, and multiple members. Compare extracted names and file hashes against a matching ESXi environment and independent read-only tools. Reject VMFS3/5 rather than falling back to those layouts. Complete large-block mapping, page-state semantics, native allocation/recovery and cluster write protocol remain unresolved. Historical appendices preserve provenance and are not release qualification.
-
-The PDF preserves both earlier documents as historical appendices.
+Pinned evidence: https://github.com/weafon/vmfs6-tool/tree/84e094a16f92b1883f16c347ede4c0edadaf5290/libvmfs . Review vmfs_volume.c, vmfs_fs.c, vmfs_inode.c, vmfs_block.h, vmfs_bitmap.h, vmfs_dirent.c and vmfs_heartbeat.h. Use genuine VMFS6 images with different file sizes, directory pages, pointer types, sparse allocations, large file blocks, and multiple members. Compare extracted names and file hashes against a matching ESXi environment and independent read-only tools. Reject VMFS3/5 rather than falling back to those layouts. Complete large-block mapping, page-state semantics, native allocation/recovery and cluster write protocol remain unresolved.
