@@ -4,8 +4,6 @@
 
 VMFS6 was introduced with the VMware vSphere 6.5 generation. It extends the clustered datastore design with changes including allocation geometry, addressing and metadata layout. The evidence for this chapter is Weafon Tsao's vmfs6-tool fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source explicitly describes limited VMFS6 support. It is a reverse-engineered reader with inherited experimental mutation paths, not a complete vendor specification. Do not apply the older VMFS3/5 descriptor and directory layout to VMFS6 or infer complete compatibility from this source.
 
-VMFS6 was introduced with VMware vSphere 6.5. Earlier VMFS readers are not automatically compatible.
-
 ## Physical volume and filesystem information
 
 The observed partition-relative volume information begins at 0x100000, with little-endian magic 0xC001D00D at offset 0 and 32-bit volume version at 4. LUN byte is at 14, 28-byte name at 18, 32-bit physical-size field at 95 and 16-byte volume UUID at 130. The reference describes the physical-size field as scaled by 256; validate its unit against known media. The filesystem address space starts 0x1000000 bytes after the volume-information base. Within the assembled logical volume, filesystem information begins at 0x200000 and has magic 0x2FABF15E. For a single partition and first extent beginning at segment zero, that corresponds to partition byte 0x1300000. For a whole-disk image, add the actual partition start. Validate partition boundaries rather than assuming a legacy MBR.

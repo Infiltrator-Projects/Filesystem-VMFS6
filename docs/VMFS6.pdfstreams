@@ -28,15 +28,13 @@ BT /F2 22 Tf 43 784 Td (VMFS6 - technical reference) Tj ET
 BT /F2 22 Tf 43 784 Td (VMFS6 - technical reference) Tj ET
 0.08 0.14 0.20 rg BT /F2 15 Tf 43 736 Td (1. Scope and version-specific evidence) Tj ET
 0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (VMFS6 was introduced with the VMware vSphere 6.5 generation. It extends the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (clustered datastore design with changes including allocation geometry, addressing) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (and metadata layout. The evidence for this chapter is Weafon Tsao's vmfs6-tool) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source explicitly) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (describes limited VMFS6 support. It is a reverse-engineered reader with inherited) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (experimental mutation paths, not a complete vendor specification. Do not apply the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (older VMFS3/5 descriptor and directory layout to VMFS6 or infer complete) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (compatibility from this source.) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 584 Td (VMFS6 was introduced with VMware vSphere 6.5. Earlier VMFS readers are not) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 570 Td (automatically compatible.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (clustered datastore design with changes including allocation geometry,) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (addressing and metadata layout. The evidence for this chapter is Weafon Tsao's) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (vmfs6-tool fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (explicitly describes limited VMFS6 support. It is a reverse-engineered reader) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (with inherited experimental mutation paths, not a complete vendor) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (specification. Do not apply the older VMFS3/5 descriptor and directory layout) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (to VMFS6 or infer complete compatibility from this source.) Tj ET
 0.2 0.3 0.4 rg BT /F1 9 Tf 43 32 Td (Historical development and engineering reference | 2) Tj ET
 
 %%Page

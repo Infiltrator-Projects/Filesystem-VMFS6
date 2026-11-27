@@ -49,22 +49,20 @@ endobj
 << /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents 9 0 R >>
 endobj
 9 0 obj
-<< /Length 1532 >>
+<< /Length 1333 >>
 stream
 0.06 0.15 0.23 rg 0 768 595 74 re f
 1 1 1 rg BT /F2 10 Tf 43 811 Td (INFILTRATOR / FILESYSTEM ENGINEERING) Tj ET
 BT /F2 22 Tf 43 784 Td (VMFS6 - technical reference) Tj ET
 0.08 0.14 0.20 rg BT /F2 15 Tf 43 736 Td (1. Scope and version-specific evidence) Tj ET
 0.08 0.14 0.20 rg BT /F3 10 Tf 43 706 Td (VMFS6 was introduced with the VMware vSphere 6.5 generation. It extends the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (clustered datastore design with changes including allocation geometry, addressing) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (and metadata layout. The evidence for this chapter is Weafon Tsao's vmfs6-tool) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source explicitly) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (describes limited VMFS6 support. It is a reverse-engineered reader with inherited) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (experimental mutation paths, not a complete vendor specification. Do not apply the) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (older VMFS3/5 descriptor and directory layout to VMFS6 or infer complete) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (compatibility from this source.) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 584 Td (VMFS6 was introduced with VMware vSphere 6.5. Earlier VMFS readers are not) Tj ET
-0.08 0.14 0.20 rg BT /F3 10 Tf 43 570 Td (automatically compatible.) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 692 Td (clustered datastore design with changes including allocation geometry,) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 678 Td (addressing and metadata layout. The evidence for this chapter is Weafon Tsao's) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 664 Td (vmfs6-tool fork, commit 84e094a16f92b1883f16c347ede4c0edadaf5290. Its source) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 650 Td (explicitly describes limited VMFS6 support. It is a reverse-engineered reader) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 636 Td (with inherited experimental mutation paths, not a complete vendor) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 622 Td (specification. Do not apply the older VMFS3/5 descriptor and directory layout) Tj ET
+0.08 0.14 0.20 rg BT /F3 10 Tf 43 608 Td (to VMFS6 or infer complete compatibility from this source.) Tj ET
 0.2 0.3 0.4 rg BT /F1 9 Tf 43 32 Td (Historical development and engineering reference | 2) Tj ET
 endstream
 endobj
@@ -462,42 +460,42 @@ xref
 0000000600 00000 n 
 0000002528 00000 n 
 0000002674 00000 n 
-0000004257 00000 n 
-0000004405 00000 n 
-0000006097 00000 n 
-0000006245 00000 n 
-0000007779 00000 n 
-0000007927 00000 n 
-0000009493 00000 n 
-0000009641 00000 n 
-0000011145 00000 n 
-0000011293 00000 n 
-0000012830 00000 n 
-0000012978 00000 n 
-0000014513 00000 n 
-0000014661 00000 n 
-0000016058 00000 n 
-0000016206 00000 n 
-0000017717 00000 n 
-0000017865 00000 n 
-0000019171 00000 n 
-0000019319 00000 n 
-0000021015 00000 n 
-0000021163 00000 n 
-0000022580 00000 n 
-0000022728 00000 n 
-0000024583 00000 n 
-0000024731 00000 n 
-0000026303 00000 n 
-0000026451 00000 n 
-0000027973 00000 n 
-0000028121 00000 n 
-0000029809 00000 n 
-0000029957 00000 n 
-0000032226 00000 n 
-0000032374 00000 n 
+0000004058 00000 n 
+0000004206 00000 n 
+0000005898 00000 n 
+0000006046 00000 n 
+0000007580 00000 n 
+0000007728 00000 n 
+0000009294 00000 n 
+0000009442 00000 n 
+0000010946 00000 n 
+0000011094 00000 n 
+0000012631 00000 n 
+0000012779 00000 n 
+0000014314 00000 n 
+0000014462 00000 n 
+0000015859 00000 n 
+0000016007 00000 n 
+0000017518 00000 n 
+0000017666 00000 n 
+0000018972 00000 n 
+0000019120 00000 n 
+0000020816 00000 n 
+0000020964 00000 n 
+0000022381 00000 n 
+0000022529 00000 n 
+0000024384 00000 n 
+0000024532 00000 n 
+0000026104 00000 n 
+0000026252 00000 n 
+0000027774 00000 n 
+0000027922 00000 n 
+0000029610 00000 n 
+0000029758 00000 n 
+0000032027 00000 n 
+0000032175 00000 n 
 trailer
 << /Size 44 /Root 1 0 R >>
 startxref
-33879
+33680
 %%EOF
