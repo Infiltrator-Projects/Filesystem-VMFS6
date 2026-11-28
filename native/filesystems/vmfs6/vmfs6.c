@@ -91,9 +91,10 @@ static int probe(const IfsFsHostRuntimeV2 *h,uint32_t *variant){
  if(h->volume_bytes%h->logical_sector_bytes)return IFS_FS_INVALID;
  return identify(h,variant);
 }
+#include <infiltratr/filesystem_session_v2.h>
 #include "reader.h"
 static const IfsFsCoreOpsV2 core={
- .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsCoreOpsV2),IFS_FS_GROUP_CORE,0,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|IFS_FS_CORE_STAT|IFS_FS_CORE_LIST|IFS_FS_CORE_READ},.probe=probe,.mount=mount_volume,.unmount=unmount_volume,.stat=stat_path,.directory_entry=list_path,.read=read_path
+ .header={IFS_FS_GROUP_ABI_V2,sizeof(IfsFsCoreOpsV2),IFS_FS_GROUP_CORE,0,IFS_FS_CORE_PROBE|IFS_FS_CORE_MOUNT|IFS_FS_CORE_STAT|IFS_FS_CORE_LIST|IFS_FS_CORE_READ},.probe=probe,.mount=mount_volume,.unmount=unmount_volume,.stat=mounted_stat,.directory_entry=mounted_directory_entry,.read=mounted_read
 };
 static const IfsFsGroupHeaderV2 *query(uint32_t id,uint32_t min,uint32_t max){
  if(min>2u||max<2u)return NULL;

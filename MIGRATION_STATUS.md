@@ -13,3 +13,7 @@ Native metadata identity checks now cover mapped FDC descriptor and bitmap addre
 ## Expanded structural qualification
 
 Added native directory dot/self identity and first-free hint checks plus multi-page namespace, fragmented direct read, sparse zero and inline payload fixtures. Real ESXi-created media remains required; no runtime publication or mutation qualification is claimed.
+
+### Mounted volume lifetime
+
+The provider copies the caller's size-versioned host descriptor and assigns each mount an opaque generation. An operation reserves its mount until its callback returns. A concurrent unmount or second operation on that mount returns `IFS_FS_BUSY`. Independent mounts remain usable. Unmount removes the generation before releasing native state, so a closed handle returns `IFS_FS_INVALID` even after a new mount reuses the same memory. The Common V2 regression holds a directory read inside a host I/O callback while a second thread queries and unmounts both volumes.

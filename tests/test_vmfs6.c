@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #define _POSIX_C_SOURCE 200809L
 #include <infiltratr/filesystem_module_v2.h>
+#include "../Libraries/tests/filesystem_reader_lifetime.h"
 #include <assert.h>
 #include <dlfcn.h>
 #include <fcntl.h>
@@ -84,6 +85,7 @@ static void mount_fixture(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct 
  void*v=NULL;IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
  assert(core->mount(h,&v,&info)==IFS_FS_ACCESS&&!v);
  h->capabilities|=IFS_FS_HOST_EXCLUSIVE;
+ check_reader_lifetime(core, h);
  int rc=core->mount(h,&v,&info);if(rc)fprintf(stderr,"native VMFS fixture mount %d\n",rc);
  assert(rc==0&&v&&info.free_bytes==244ull*BLK);
  char name[129],out[5];IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,.name_capacity=sizeof(name)};

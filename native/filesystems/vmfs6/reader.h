@@ -13,6 +13,8 @@
 #define MAX_SCAN (UINT64_C(16)*1024u*1024u)
 typedef struct {uint32_t items,entries,head,data,area,total,areas;} Catalogue;
 typedef struct {
+    IfsFsSessionLinkV2 session;
+    IfsFsHostRuntimeV2 runtime;
  const IfsFsHostRuntimeV2*h;uint64_t size,block,base,free;
  uint32_t version;
  Catalogue fdc,fbb;
@@ -20,6 +22,8 @@ typedef struct {
  uint8_t *used;
  int verified;
 } Volume;
+
+static IfsFsSessionRegistryV2 sessions = IFS_FS_SESSION_REGISTRY_INIT_V2;
 static void zero(void*p,size_t n){uint8_t*b=p;while(n--)*b++=0;}
 static int logical_read(Volume*v,uint64_t off,void*out,uint32_t n){
  if(off>v->size||n>v->size-off)return IFS_FS_CORRUPT;
@@ -243,7 +247,8 @@ static int mount_volume(const IfsFsHostRuntimeV2*h,void**out,IfsFsVolumeInfoV2*i
  if(!out||!info||info->structure_bytes<sizeof(*info)||!ifs_fs_host_v2_valid(h))return IFS_FS_INVALID;
  *out=NULL;if((h->capabilities&(IFS_FS_HOST_READ_ONLY|IFS_FS_HOST_EXCLUSIVE))!=(IFS_FS_HOST_READ_ONLY|IFS_FS_HOST_EXCLUSIVE))return IFS_FS_ACCESS;
  uint32_t version;int rc=identify(h,&version);if(rc)return rc;
- Volume*v=h->allocate(h->context,sizeof(*v));if(!v)return IFS_FS_NO_MEMORY;zero(v,sizeof(*v));v->h=h;v->version=version;
+ Volume*v=h->allocate(h->context,sizeof(*v));if(!v)return IFS_FS_NO_MEMORY;zero(v,sizeof(*v));ifs_fs_session_copy_host_v2(&v->runtime, h);
+ v->h=&v->runtime;v->version=version;
  uint8_t p[512],check[DESCRIPTOR];
  rc=read_bytes(h,VOL+LVM_OFFSET,p,sizeof(p));if(rc)goto done;v->size=le64(p);
  rc=logical_read(v,0x200000u,p,sizeof(p));if(rc)goto done;v->block=le64(p+161);
@@ -274,11 +279,23 @@ static int mount_volume(const IfsFsHostRuntimeV2*h,void**out,IfsFsVolumeInfoV2*i
   rc=check_entry(b,&v->fbb,entry,0x10c00002u,&bits,&free);if(rc)goto done;
   start+=bits;
  }
- *out=v;return volume_info(v,info);
+ rc = volume_info(v, info);
+    if (!rc) rc = ifs_fs_session_publish_v2(&sessions, &v->session, v, out);
+    if (rc) destroy(v);
+    return rc;
 done:
  destroy(v);return rc;
 }
-static int unmount_volume(void*vol){if(!vol)return IFS_FS_INVALID;destroy(vol);return 0;}
+static int unmount_volume(void *handle)
+{
+    void *raw;
+    int rc = ifs_fs_session_lookup_v2(&sessions, handle, 1, &raw);
+    if (rc) return rc;
+    Volume *v = raw;
+    destroy(v);
+    return IFS_FS_OK;
+}
+
 static int resolve(Volume*v,const char*path,uint8_t*i,const char**name,unsigned*n){
  if(!v||!path||path[0]!='/')return IFS_FS_INVALID;
  for(unsigned j=0;j<DESCRIPTOR;j++)i[j]=v->root[j];
@@ -312,4 +329,51 @@ static int read_path(void*vol,const char*path,uint64_t off,void*out,uint32_t n){
  if(le32(i+MDH+12)!=3u&&le32(i+MDH+12)!=5u)return IFS_FS_UNSUPPORTED;
  return file_read(vol,i,off,out,n,1);
 }
-static const IfsFsVolumeOpsV2 volume_ops={.header={2,sizeof(IfsFsVolumeOpsV2),IFS_FS_GROUP_VOLUME,0,IFS_FS_VOLUME_QUERY},.query=volume_info};
+/* File operations reserve the decoded volume for the whole call. A host
+ * can reenter from I/O or attempt unmount from another thread. Both paths
+ * observe BUSY until the owner releases this mount's reservation. */
+static int mounted_stat(void *handle, const char *path, IfsFsEntryV2 *entry)
+{
+    void *raw;
+    int rc = ifs_fs_session_lookup_v2(&sessions, handle, 0, &raw);
+    if (rc) return rc;
+    Volume *v = raw;
+    rc = stat_path(v, path, entry);
+    ifs_fs_session_return_v2(&sessions, &v->session);
+    return rc;
+}
+
+static int mounted_directory_entry(void *handle, const char *path, uint32_t index, IfsFsEntryV2 *entry)
+{
+    void *raw;
+    int rc = ifs_fs_session_lookup_v2(&sessions, handle, 0, &raw);
+    if (rc) return rc;
+    Volume *v = raw;
+    rc = list_path(v, path, index, entry);
+    ifs_fs_session_return_v2(&sessions, &v->session);
+    return rc;
+}
+
+static int mounted_read(void *handle, const char *path, uint64_t offset, void *buffer, uint32_t length)
+{
+    void *raw;
+    int rc = ifs_fs_session_lookup_v2(&sessions, handle, 0, &raw);
+    if (rc) return rc;
+    Volume *v = raw;
+    rc = read_path(v, path, offset, buffer, length);
+    ifs_fs_session_return_v2(&sessions, &v->session);
+    return rc;
+}
+
+static int mounted_query(void *handle, IfsFsVolumeInfoV2 *out)
+{
+    void *raw;
+    int rc = ifs_fs_session_lookup_v2(&sessions, handle, 0, &raw);
+    if (rc) return rc;
+    Volume *v = raw;
+    rc = volume_info(v, out);
+    ifs_fs_session_return_v2(&sessions, &v->session);
+    return rc;
+}
+
+static const IfsFsVolumeOpsV2 volume_ops={.header={2,sizeof(IfsFsVolumeOpsV2),IFS_FS_GROUP_VOLUME,0,IFS_FS_VOLUME_QUERY},.query=mounted_query};
