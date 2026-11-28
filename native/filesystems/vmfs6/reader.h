@@ -28,7 +28,7 @@ static int logical_read(Volume*v,uint64_t off,void*out,uint32_t n){
 static int block_pointer(const uint8_t*i,uint64_t index,uint64_t*item,int*hole){
  if(index>=PTR_COUNT)return IFS_FS_UNSUPPORTED;
  uint64_t id=le64(i+PTR_OFFSET+index*PTR_BYTES);
- *hole=0;*item=0;
+ *hole=0;*item=UINT64_MAX;
  if(!id){*hole=1;return 0;}
  if((id&7u)!=1u)return IFS_FS_UNSUPPORTED;
  if(id&~UINT64_C(0x0ff80000ffff80a7))return IFS_FS_UNSUPPORTED;
@@ -52,13 +52,33 @@ static int file_read(Volume*v,const uint8_t*i,uint64_t off,void*out,uint32_t n,i
  while(n){
   uint64_t item;int hole;int rc=block_pointer(i,off/v->block,&item,&hole);if(rc)return rc;
   unsigned skip=(unsigned)(off%v->block),take=(unsigned)v->block-skip;if(take>n)take=n;
+  /* A zero-marked allocated pointer is not the same as an absent
+   * mapping. Validate ownership before returning logical zeros; stale
+   * pointers into free space must not be presented as valid files. */
+  if(item!=UINT64_MAX&&(item>=v->size/v->block||(v->verified&&(item>=v->fbb.total||!(v->used[item/8u]&(1u<<(item%8u)))))))return IFS_FS_CORRUPT;
   if(hole){if(!holes)return IFS_FS_CORRUPT;zero(p,take);}
   else {
-   if(item>=v->size/v->block||(v->verified&&(item>=v->fbb.total||!(v->used[item/8u]&(1u<<(item%8u))))))return IFS_FS_CORRUPT;
    rc=logical_read(v,item*v->block+skip,p,take);if(rc)return rc;
   }
   off+=take;p+=take;n-=take;
  }
+ return 0;
+}
+
+/* Resolve a complete contiguous metadata record in a catalogue file
+ * to its native logical LUN position. The MDH self address must match
+ * this translation even after leaving the initial bootstrap block.
+ * Do not accept a valid-looking descriptor copied to a different
+ * allocation slot. Crossing file-block boundaries is not qualified. */
+static int metadata_position(Volume*v,const uint8_t*i,uint64_t off,uint32_t n,uint64_t*position)
+{
+ const uint8_t*d=i+MDH;uint32_t zla=le32(d+68);uint64_t size=le64(d+20);
+ if((zla!=1u&&zla!=4302u)||le64(d+28)!=v->block)return IFS_FS_UNSUPPORTED;
+ if(off>size||n>size-off||n>v->block-off%v->block)return IFS_FS_CORRUPT;
+ uint64_t item;int hole;int rc=block_pointer(i,off/v->block,&item,&hole);if(rc)return rc;
+ if(hole||item>=v->size/v->block||
+    (v->verified&&(item>=v->fbb.total||!(v->used[item/8u]&(1u<<(item%8u))))))return IFS_FS_CORRUPT;
+ *position=item*v->block+off%v->block;
  return 0;
 }
 static int header(const uint8_t*p,Catalogue*c,uint64_t size,uint32_t data){
@@ -118,12 +138,19 @@ static int descriptor(Volume*v,uint32_t id,uint8_t*p,int boot){
   rc=logical_read(v,v->base+e,buf,sizeof(buf));
  }else rc=file_read(v,v->fdc_inode,e,buf,sizeof(buf),0);
  if(rc)return rc;
+ uint64_t physical_entry,physical_descriptor;
+ if(boot){physical_entry=v->base+e;physical_descriptor=v->base+pos;}
+ else {
+  rc=metadata_position(v,v->fdc_inode,e,sizeof(buf),&physical_entry);if(rc)return rc;
+  rc=metadata_position(v,v->fdc_inode,pos,DESCRIPTOR,&physical_descriptor);if(rc)return rc;
+ }
+ if(le64(buf+4)!=physical_entry)return IFS_FS_CORRUPT;
  uint32_t bits,free;rc=check_entry(buf,&v->fdc,entry,0x10c00005u,&bits,&free);if(rc)return rc;
  if(item>=bits||(buf[MDH+16+item/8u]&(1u<<(item%8u))))return IFS_FS_CORRUPT;
  if(boot)rc=logical_read(v,v->base+pos,p,DESCRIPTOR);
  else rc=file_read(v,v->fdc_inode,pos,p,DESCRIPTOR,0);
  if(rc)return rc;
- if(boot&&le64(p+4)!=v->base+pos)return IFS_FS_CORRUPT;
+ if(le64(p+4)!=physical_descriptor)return IFS_FS_CORRUPT;
  return valid_inode(v,p,id);
 }
 static int name_match(const uint8_t*p,const char*q,unsigned n){for(unsigned i=0;i<n;i++)if(p[i]!=(uint8_t)q[i])return 0;return 1;}
@@ -139,13 +166,13 @@ static int scan(Volume*v,const uint8_t*i,const char*name,unsigned n,uint32_t ind
  for(uint64_t slot=0;slot<MAX_SCAN/DIR_RECORD;slot++){
   uint64_t off;
   uint64_t page=slot<2u?0u:(slot-2u)/14u, mapoff=0x10040u+(page+1u)/2u;
+  off=slot<2u?0x3b8u+slot*DIR_RECORD:0x11040u+page*4096u+((slot-2u)%14u)*DIR_RECORD;
+  if(off>=size)break;
   if(mapoff>=0x11000u)return IFS_FS_UNSUPPORTED;
   uint8_t state;int r=file_read(v,i,mapoff,&state,1,0);if(r)return r;
   unsigned nibble=(state>>((page+1u)%2u?0u:4u))&15u;
   if(nibble&8u)break;
   if(!(nibble&1u))continue;
-  off=slot<2u?0x3b8u+slot*DIR_RECORD:0x11040u+page*4096u+((slot-2u)%14u)*DIR_RECORD;
-  if(off>=size)break;
   if(DIR_RECORD>size-off)return IFS_FS_CORRUPT;
   uint8_t p[DIR_RECORD];int rc=file_read(v,i,off,p,sizeof(p),0);if(rc)return rc;
   uint32_t type=le32(p),id=le32(p+4),record=le32(p+8);
@@ -188,6 +215,8 @@ static int load_fbb(Volume*v){
   uint32_t entry=start/v->fbb.items,bits,free;uint64_t e,pos;
   rc=entry_offset(&v->fbb,entry,0,&e,&pos);if(rc)return rc;
   rc=file_read(v,v->fbb_inode,e,p,sizeof(p),0);if(rc)return rc;
+  uint64_t position;rc=metadata_position(v,v->fbb_inode,e,sizeof(p),&position);if(rc)return rc;
+  if(le64(p+4)!=position)return IFS_FS_CORRUPT;
   rc=check_entry(p,&v->fbb,entry,0x10c00002u,&bits,&free);if(rc)return rc;
   for(unsigned j=0;j<bits;j++)if(!(p[MDH+16+j/8u]&(1u<<(j%8u))))v->used[(start+j)/8u]|=(uint8_t)(1u<<((start+j)%8u));
   v->free+=free;start+=bits;
@@ -229,6 +258,8 @@ static int mount_volume(const IfsFsHostRuntimeV2*h,void**out,IfsFsVolumeInfoV2*i
   uint64_t e,pos;uint32_t entry=start/v->fbb.items,bits,free;
   uint8_t b[MDH+512u];rc=entry_offset(&v->fbb,entry,0,&e,&pos);if(rc)goto done;
   rc=file_read(v,v->fbb_inode,e,b,sizeof(b),0);if(rc)goto done;
+  uint64_t position;rc=metadata_position(v,v->fbb_inode,e,sizeof(b),&position);if(rc)goto done;
+  if(le64(b+4)!=position){rc=IFS_FS_CORRUPT;goto done;}
   rc=check_entry(b,&v->fbb,entry,0x10c00002u,&bits,&free);if(rc)goto done;
   start+=bits;
  }

@@ -24,3 +24,16 @@ check: all build/test_vmfs6
 	build/test_vmfs6 ./build/freestanding/VMFS6.so
 clean:
 	rm -rf build
+
+# Requires an independently captured partition and a payload copied from
+# that same datastore by its original implementation. Never generate a
+# synthetic volume or use the VMFS3 upstream test.img as a substitute.
+.PHONY: check-real
+check-real: check
+	test -n "$(IMAGE)" && test -f "$(IMAGE)"
+	test -n "$(PAYLOAD_PATH)" && test -f "$(EXPECTED)"
+	test -n "$(IMAGE_SHA256)"
+	printf '%s  %s\n' "$(IMAGE_SHA256)" "$(IMAGE)" | sha256sum -c -
+	build/test_vmfs6 ./build/VMFS6.so "$(IMAGE)" "$(PAYLOAD_PATH)" "$(EXPECTED)"
+	build/test_vmfs6 ./build/freestanding/VMFS6.so "$(IMAGE)" "$(PAYLOAD_PATH)" "$(EXPECTED)"
+	printf '%s  %s\n' "$(IMAGE_SHA256)" "$(IMAGE)" | sha256sum -c -

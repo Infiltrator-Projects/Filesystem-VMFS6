@@ -101,6 +101,21 @@ static void mount_fixture(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct 
  assert(core->unmount(v)==0&&!c->allocs);
  p=image+FBB+512+MDH;put32(p+8,244);
  assert(core->mount(h,&v,&info)==IFS_FS_CORRUPT&&!v&&!c->allocs);
+ /* Recompute no checksum: these fields are independent identity
+  * constraints, not checksummed fields. A relocated stale descriptor
+  * or bitmap record must fail even if the surrounding data is intact. */
+ memset(image,0,SIZE);populated();put64(image+ROOT+3u*8192u+4,ROOT-DATA);
+ assert(core->mount(h,&v,&info)==0&&v);
+ assert(core->stat(v,"/hello.txt",&e)==IFS_FS_CORRUPT);
+ assert(core->unmount(v)==0&&!c->allocs);
+ memset(image,0,SIZE);populated();put64(image+FBB+512+4,FBB-DATA);
+ assert(core->mount(h,&v,&info)==IFS_FS_CORRUPT&&!v&&!c->allocs);
+ memset(image,0,SIZE);populated();
+ p=image+FBB+512+MDH;p[17]|=8;put32(p+8,245);put32(p+12,11);
+ put64(image+ROOT+3u*8192u+5632u,(UINT64_C(11)<<51)|0x81u);
+ assert(core->mount(h,&v,&info)==0&&v);
+ assert(core->read(v,"/hello.txt",0,out,5)==IFS_FS_CORRUPT);
+ assert(core->unmount(v)==0&&!c->allocs);
  h->capabilities&=~IFS_FS_HOST_EXCLUSIVE;
 }
 
@@ -109,19 +124,44 @@ static void expect(const IfsFsCoreOpsV2 *core,IfsFsHostRuntimeV2*h,struct contex
  if(rc!=want)fprintf(stderr,"expected %d got %d at sector %u\n",want,rc,c->sector);
  assert(rc==want&&(!rc?v!=0:v==0)&&!c->allocs);
 }
+
+/* Qualification on a genuine external VMFS6 partition image. The
+ * expected bytes are independently obtained from the original
+ * datastore before capture. Neither the structural fixture nor an
+ * older VMFS3 image is permitted to substitute for this test. */
+static void real_media(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct context*c,const char*path,const char*expected)
+{
+ int fd=open(expected,O_RDONLY);struct stat st;assert(fd>=0&&!fstat(fd,&st)&&st.st_size>0);
+ h->capabilities|=IFS_FS_HOST_EXCLUSIVE;
+ void*v=NULL;IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+ int rc=core->mount(h,&v,&info);if(rc)fprintf(stderr,"VMFS6 independent mount %d\n",rc);
+ assert(rc==0&&v&&info.variant==6u&&info.total_bytes&&info.free_bytes<=info.total_bytes);
+ char name[129];IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,.name_capacity=sizeof(name)};
+ assert(core->stat(v,path,&e)==0&&e.type==IFS_FS_ENTRY_FILE&&e.size_bytes==(uint64_t)st.st_size);
+ uint8_t want[4096],got[4096];
+ for(uint64_t off=0;off<(uint64_t)st.st_size;){
+  uint32_t n=(uint64_t)st.st_size-off>sizeof(want)?sizeof(want):(uint32_t)((uint64_t)st.st_size-off);
+  assert(pread(fd,want,n,(off_t)off)==(ssize_t)n);
+  assert(core->read(v,path,off,got,n)==0&&!memcmp(want,got,n));
+  off+=n;
+ }
+ assert(core->unmount(v)==0&&!c->allocs&&!close(fd));
+ h->capabilities&=~IFS_FS_HOST_EXCLUSIVE;
+ puts("Independent VMFS6 payload comparison PASS");
+}
 int main(int argc,char **argv){
- assert(argc==2||argc==3);void *lib=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(lib);
+ assert(argc==2||argc==3||argc==5);void *lib=dlopen(argv[1],RTLD_NOW|RTLD_LOCAL);assert(lib);
  IfsFsModuleApiEntryV2 get=(IfsFsModuleApiEntryV2)dlsym(lib,IFS_FS_COMMON_EXPORT_V2);assert(get);
  const IfsFsModuleApiV2*a=get();assert(ifs_fs_api_v2_valid(a,"vmfs6"));
  const IfsFsCoreOpsV2*core=(const void*)ifs_fs_group_v2(a,IFS_FS_GROUP_CORE);
  assert(core&&core->mount&&core->read&&!core->write&&!ifs_fs_group_v2(a,IFS_FS_GROUP_DEFRAG));
  struct context c={.fd=-1,.bytes=SIZE};
- if(argc==3){struct stat st;c.fd=open(argv[2],O_RDONLY);assert(c.fd>=0&&!fstat(c.fd,&st)&&st.st_size>0);c.bytes=(uint64_t)st.st_size;}
+ if(argc>=3){struct stat st;c.fd=open(argv[2],O_RDONLY);assert(c.fd>=0&&!fstat(c.fd,&st)&&st.st_size>0);c.bytes=(uint64_t)st.st_size;}
  else {image=calloc(1,SIZE);assert(image);}
  IfsFsHostRuntimeV2 h={.abi_version=2,.structure_bytes=sizeof(h),.capabilities=IFS_FS_HOST_READ_ONLY,.volume_bytes=c.bytes,.maximum_transfer_bytes=4096,.context=&c,.read_at=rd,.allocate=allocate,.release=release};
  for(c.sector=512;c.sector<=4096;c.sector*=8){
   h.logical_sector_bytes=h.physical_sector_bytes=c.sector;
-  if(argc==3){expect(core,&h,&c,IFS_FS_OK);continue;}
+  if(argc>=3){expect(core,&h,&c,IFS_FS_OK);if(argc==5)real_media(core,&h,&c,argv[3],argv[4]);continue;}
   memset(image,0,SIZE);fixture();expect(core,&h,&c,IFS_FS_OK);
   c.fail=1;expect(core,&h,&c,IFS_FS_IO_ERROR);c.fail=0;
   corrupt();expect(core,&h,&c,IFS_FS_CORRUPT);
