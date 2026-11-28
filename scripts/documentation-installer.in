@@ -1,0 +1,31 @@
+#!/bin/bash
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Download the exact published source archive; package only its reference PDF.
+set -euo pipefail
+output="$PWD"
+build_only=0
+while (($#)); do
+    case "$1" in
+        --profile) [[ $# -ge 2 && ( $2 == portable || $2 == aggressive ) ]]; shift 2;;
+        --build-only) build_only=1; shift;;
+        --system-package-mode) shift;;
+        --output) [[ $# -ge 2 ]]; output=$2; shift 2;;
+        *) printf 'Unsupported option: %s\n' "$1" >&2; exit 2;;
+    esac
+done
+output=$(realpath -m "$output")
+mkdir -p "$output"
+work=$(mktemp -d)
+trap 'rm -rf -- "$work"' EXIT
+cd "$work"
+curl --fail --location --retry 3 --proto '=https' --proto-redir '=https' -o source.tar.gz "https://codeload.github.com/Infiltrator-Projects/Filesystem-VMFS6/tar.gz/@SOURCE@"
+printf '%s  %s\n' '@SOURCE_HASH@' source.tar.gz | sha256sum --check
+mkdir source
+tar -xzf source.tar.gz --strip-components=1 -C source
+cd source
+test "$(cat DOCUMENTATION_VERSION)" = '@VERSION@'
+sh scripts/documentation-package.sh "$output"
+if (( !build_only )); then
+    package="$output/infiltrator-filesystem-vmfs6_@VERSION@_amd64.deb"
+    if (( EUID == 0 )); then apt-get install -y --no-remove "$package"; else sudo apt-get install -y --no-remove "$package"; fi
+fi

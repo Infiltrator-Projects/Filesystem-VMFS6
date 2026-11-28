@@ -1,0 +1,60 @@
+name: Documentation-only native release
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'DOCUMENTATION_VERSION'
+      - 'docs/VMFS6.pdf'
+      - 'scripts/documentation-*'
+      - '.github/workflows/documentation-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: documentation-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify, package, reconstruct and publish the documentation-only release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(cat DOCUMENTATION_VERSION)
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          if gh release view "v$version" >/dev/null 2>&1; then
+            test "$(git ls-remote origin "refs/tags/v$version" | cut -f1)" = "$GITHUB_SHA"
+            exit 0
+          fi
+          sh scripts/documentation-package.sh dist
+          work=$(mktemp -d)
+          trap 'rm -rf -- "$work"' EXIT
+          curl -fsSL --retry 3 "https://codeload.github.com/$GITHUB_REPOSITORY/tar.gz/$GITHUB_SHA" -o "$work/source.tar.gz"
+          source_hash=$(sha256sum "$work/source.tar.gz" | cut -d' ' -f1)
+          run="dist/filesystem-vmfs6-$version-native-installer.run"
+          sed -e "s/@SOURCE@/$GITHUB_SHA/g" -e "s/@SOURCE_HASH@/$source_hash/g" -e "s/@VERSION@/$version/g" scripts/documentation-installer.in > "$run"
+          chmod +x "$run"
+          "$run" --profile aggressive --system-package-mode --build-only --output "$work/native"
+          deb="infiltrator-filesystem-vmfs6_${version}_amd64.deb"
+          path="System/Resources/Documentation/Filesystem-VMFS6.pdf"
+          for package in "dist/$deb" "$work/native/$deb"; do
+            test "$(dpkg-deb -f "$package" Package)" = 'infiltrator-filesystem-vmfs6'
+            test "$(dpkg-deb -f "$package" Version)" = "$version"
+            test "$(dpkg-deb -f "$package" Architecture)" = amd64
+            test "$(dpkg-deb --fsys-tarfile "$package" | tar -tf - | grep -v '/$')" = "./$path"
+            dpkg-deb -x "$package" "$work/extract"
+            cmp "docs/VMFS6.pdf" "$work/extract/$path"
+          done
+          test ! -e "/$path"
+          sudo dpkg -i "$work/native/$deb"
+          cmp "docs/VMFS6.pdf" "/$path"
+          sudo dpkg --purge infiltrator-filesystem-vmfs6
+          test ! -e "/$path"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$GITHUB_SHA"
+          gh release create "v$version" --target "$GITHUB_SHA" --title "VMFS6 documentation v$version" --notes "Documentation-only release. No filesystem driver or runtime capability is installed." "dist/$deb" "$run"
