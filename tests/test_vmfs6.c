@@ -48,6 +48,62 @@ static void fixture(void){
 }
 static void corrupt(void){image[FDC+HEAD+MDH+16]|=1;}
 static void absent(void){image[VOL]=0;}
+
+#define BLK 0x100000u
+#define FBB (DATA+9u*BLK)
+#define ROOT_DATA (DATA+10u*BLK)
+#define FILE_DATA (DATA+11u*BLK)
+static void desc(unsigned item,unsigned type,uint64_t size,unsigned data){
+ uint8_t*p=image+ROOT+item*8192u;
+ put32(p,0x10c00001);put64(p+4,ROOT+item*8192u-DATA);
+ p+=MDH;put32(p,4u+(item<<22));put32(p+4,item+100u);put32(p+8,1);put32(p+12,type);
+ put64(p+20,size);put64(p+28,BLK);put64(p+36,1);put32(p+68,1);
+ put64(p+(5632u-MDH),((uint64_t)data<<51)|1u);
+}
+static void dirent(unsigned offset,unsigned item,unsigned type,const char*name){
+ uint8_t*p=image+ROOT_DATA+offset;put32(p,type);put32(p+4,4u+(item<<22));put32(p+8,item+100u);memcpy(p+24u,name,strlen(name));
+}
+static void populated(void){
+ fixture();
+ uint8_t*p=image+FDC+HEAD+MDH;put32(p+8,4);put32(p+12,4);p[16]=0xf0;
+ /* The second descriptor bitmap entry represents the remaining 8
+  * free items of the native catalogue. */
+ p=image+FDC+HEAD+STRIDE;put32(p,0x10c00005);put64(p+4,FDC+HEAD+STRIDE-DATA);
+ p+=MDH;put32(p,1);put32(p+4,8);put32(p+8,8);p[16]=255;
+ desc(0,2,0x12000u,10);desc(1,5,BLK,7u);desc(2,5,BLK,9);desc(3,3,5,11);
+ image[ROOT_DATA+0x10040]=1;image[ROOT_DATA+0x10041]=0x80;
+ dirent(0x3b8,0,2,".");dirent(0x4d8,0,2,"..");
+ dirent(0x11040,1,5,".fdc.sf");dirent(0x11160,2,5,".fbb.sf");dirent(0x11280,3,3,"hello.txt");
+ p=image+FBB;put32(p,256);put32(p+4,1);put32(p+8,512);put32(p+12,0);put32(p+16,STRIDE);put32(p+20,256);put32(p+24,1);
+ p+=512;put32(p,0x10c00002);put64(p+4,FBB+512-DATA);p+=MDH;put32(p+4,256);put32(p+8,244);put32(p+12,12);
+ memset(p+16,255,32);p[16]=0;p[17]=0xf0;
+ memcpy(image+FILE_DATA,"hello",5);
+}
+static void mount_fixture(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct context*c){
+ memset(image,0,SIZE);populated();
+ void*v=NULL;IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+ assert(core->mount(h,&v,&info)==IFS_FS_ACCESS&&!v);
+ h->capabilities|=IFS_FS_HOST_EXCLUSIVE;
+ int rc=core->mount(h,&v,&info);if(rc)fprintf(stderr,"native VMFS fixture mount %d\n",rc);
+ assert(rc==0&&v&&info.free_bytes==244ull*BLK);
+ char name[129],out[5];IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,.name_capacity=sizeof(name)};
+ assert(core->stat(v,"/",&e)==0&&e.type==IFS_FS_ENTRY_DIRECTORY);
+ assert(core->stat(v,"/hello.txt",&e)==0&&e.size_bytes==5&&e.type==IFS_FS_ENTRY_FILE);
+ assert(core->directory_entry(v,"/",2,&e)==0&&!strcmp(name,"hello.txt"));
+ assert(core->read(v,"/hello.txt",0,out,5)==0&&!memcmp(out,"hello",5));
+ assert(core->read(v,"/hello.txt",5,out,1)==IFS_FS_INVALID);
+ assert(core->unmount(v)==0&&!c->allocs);
+ /* Free the actual payload block without changing its stale bytes;
+  * a read must refuse, not expose bytes merely because they exist. */
+ uint8_t*p=image+FBB+512+MDH;p[17]|=8;put32(p+8,245);put32(p+12,11);
+ assert(core->mount(h,&v,&info)==0&&v);
+ assert(core->read(v,"/hello.txt",0,out,5)==IFS_FS_CORRUPT);
+ assert(core->unmount(v)==0&&!c->allocs);
+ p=image+FBB+512+MDH;put32(p+8,244);
+ assert(core->mount(h,&v,&info)==IFS_FS_CORRUPT&&!v&&!c->allocs);
+ h->capabilities&=~IFS_FS_HOST_EXCLUSIVE;
+}
+
 static void expect(const IfsFsCoreOpsV2 *core,IfsFsHostRuntimeV2*h,struct context*c,int want){
  uint32_t v=99;int rc=core->probe(h,&v);
  if(rc!=want)fprintf(stderr,"expected %d got %d at sector %u\n",want,rc,c->sector);
@@ -58,7 +114,7 @@ int main(int argc,char **argv){
  IfsFsModuleApiEntryV2 get=(IfsFsModuleApiEntryV2)dlsym(lib,IFS_FS_COMMON_EXPORT_V2);assert(get);
  const IfsFsModuleApiV2*a=get();assert(ifs_fs_api_v2_valid(a,"vmfs6"));
  const IfsFsCoreOpsV2*core=(const void*)ifs_fs_group_v2(a,IFS_FS_GROUP_CORE);
- assert(core&&core->header.capabilities==IFS_FS_CORE_PROBE&&!core->mount&&!core->write&&!ifs_fs_group_v2(a,IFS_FS_GROUP_DEFRAG));
+ assert(core&&core->mount&&core->read&&!core->write&&!ifs_fs_group_v2(a,IFS_FS_GROUP_DEFRAG));
  struct context c={.fd=-1,.bytes=SIZE};
  if(argc==3){struct stat st;c.fd=open(argv[2],O_RDONLY);assert(c.fd>=0&&!fstat(c.fd,&st)&&st.st_size>0);c.bytes=(uint64_t)st.st_size;}
  else {image=calloc(1,SIZE);assert(image);}
@@ -76,6 +132,7 @@ int main(int argc,char **argv){
   memset(image,0,SIZE);fixture();put32(image+FDC+4,UINT32_MAX);expect(core,&h,&c,IFS_FS_CORRUPT);
   memset(image,0,SIZE);fixture();put32(image+ROOT,0);expect(core,&h,&c,IFS_FS_CORRUPT);
 
+  mount_fixture(core,&h,&c);
  }
  if(c.fd>=0)assert(!close(c.fd));
  free(image);assert(!dlclose(lib));
