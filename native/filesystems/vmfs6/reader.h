@@ -68,8 +68,15 @@ static int header(const uint8_t*p,Catalogue*c,uint64_t size,uint32_t data){
  if(!c->items||c->items>3968u||!c->entries||c->entries>65536u||
     c->head<512u||c->head>size||!c->area||over>c->area||c->data!=data||
     !c->total||!c->areas||per*c->areas<c->total||
-    (uint64_t)c->area*c->areas>size-c->head||
     (data&&per*data>c->area-over))return IFS_FS_CORRUPT;
+ /* An area describes maximum capacity, not necessarily fully backed
+  * bytes in the last area. Validate the final represented item and
+  * its bitmap record instead of requiring unused trailing capacity. */
+ uint64_t last=(uint64_t)c->total-1u,area=last/per,within=last%per;
+ uint64_t start=c->head+area*c->area;
+ uint64_t entry_end=(within/c->items+1u)*STRIDE;
+ uint64_t data_end=over+(within+1u)*data;
+ if(start>size||entry_end>size-start||(data&&data_end>size-start))return IFS_FS_CORRUPT;
  return 0;
 }
 static int entry_offset(const Catalogue*c,uint32_t entry,uint32_t item,uint64_t*e,uint64_t*pos){
