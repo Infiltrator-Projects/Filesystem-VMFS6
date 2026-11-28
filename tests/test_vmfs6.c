@@ -70,6 +70,12 @@ int main(int argc,char **argv){
   c.fail=1;expect(core,&h,&c,IFS_FS_IO_ERROR);c.fail=0;
   corrupt();expect(core,&h,&c,IFS_FS_CORRUPT);
   memset(image,0,SIZE);fixture();absent();expect(core,&h,&c,IFS_FS_NOT_FOUND);
+  memset(image,0,SIZE);fixture();put32(image+VOL+4,5);expect(core,&h,&c,IFS_FS_UNSUPPORTED);
+  memset(image,0,SIZE);fixture();put32(image+VOL+4096+144,2);expect(core,&h,&c,IFS_FS_UNSUPPORTED);
+  memset(image,0,SIZE);fixture();image[DATA+0x200000+177]^=1;expect(core,&h,&c,IFS_FS_CORRUPT);
+  memset(image,0,SIZE);fixture();put32(image+FDC+4,UINT32_MAX);expect(core,&h,&c,IFS_FS_CORRUPT);
+  memset(image,0,SIZE);fixture();put32(image+ROOT,0);expect(core,&h,&c,IFS_FS_CORRUPT);
+
  }
  if(c.fd>=0)assert(!close(c.fd));
  free(image);assert(!dlclose(lib));
