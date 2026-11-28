@@ -119,6 +119,56 @@ static void mount_fixture(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct 
  h->capabilities&=~IFS_FS_HOST_EXCLUSIVE;
 }
 
+
+/* A second native directory page, fragmented file, sparse allocation
+ * and inline payload exercise actual 64-bit direct mapping rather than
+ * just one small data block. The fixture is structural evidence only. */
+static void extended_fixture(void){
+ memset(image,0,SIZE);populated();
+ uint8_t*p=image+FDC+HEAD+MDH;put32(p+8,1);put32(p+12,7);p[16]=0x80;
+ put64(image+ROOT+MDH+20,0x13000u);
+ image[ROOT_DATA+0x10041]=0x18;
+ dirent(0x12040,4,3,"fragment.bin");
+ dirent(0x12160,5,3,"sparse.bin");
+ dirent(0x12280,6,3,"inline.txt");
+ desc(4,3,BLK+9u,12);
+ put64(image+ROOT+4u*8192u+MDH+36,2);
+ put64(image+ROOT+4u*8192u+5632u+8u,(UINT64_C(15)<<51)|1u);
+ memset(image+DATA+12u*BLK,'A',BLK);memcpy(image+DATA+15u*BLK,"fragment!",9);
+ desc(5,3,BLK+5u,0);
+ put64(image+ROOT+5u*8192u+5632u,0);
+ put64(image+ROOT+5u*8192u+5632u+8u,(UINT64_C(13)<<51)|1u);
+ memcpy(image+DATA+13u*BLK,"tail!",5);
+ desc(6,3,6,0);
+ put32(image+ROOT+6u*8192u+MDH+68,4305);
+ memcpy(image+ROOT+6u*8192u+MDH+512,"inline",6);
+ p=image+FBB+512+MDH;p[17]=0x40;put32(p+8,241);put32(p+12,14);
+}
+static void check_extended(const IfsFsCoreOpsV2*core,IfsFsHostRuntimeV2*h,struct context*c){
+ extended_fixture();h->capabilities|=IFS_FS_HOST_EXCLUSIVE;
+ void*v=NULL;IfsFsVolumeInfoV2 info={.structure_bytes=sizeof(info)};
+ assert(core->mount(h,&v,&info)==0&&v&&info.free_bytes==241ull*BLK);
+ char name[129];uint8_t out[16];IfsFsEntryV2 e={.structure_bytes=sizeof(e),.name=name,.name_capacity=sizeof(name)};
+ assert(core->directory_entry(v,"/",3,&e)==0&&!strcmp(name,"fragment.bin"));
+ assert(core->directory_entry(v,"/",4,&e)==0&&!strcmp(name,"sparse.bin"));
+ assert(core->directory_entry(v,"/",5,&e)==0&&!strcmp(name,"inline.txt"));
+ assert(core->directory_entry(v,"/",6,&e)==IFS_FS_END);
+ assert(core->stat(v,"/fragment.bin",&e)==0&&e.size_bytes==BLK+9u);
+ assert(core->read(v,"/fragment.bin",BLK-3u,out,12)==0&&!memcmp(out,"AAAfragment!",12));
+ assert(core->read(v,"/sparse.bin",BLK-3u,out,8)==0&&!out[0]&&!out[1]&&!out[2]&&!memcmp(out+3,"tail!",5));
+ assert(core->read(v,"/inline.txt",0,out,6)==0&&!memcmp(out,"inline",6));
+ assert(core->unmount(v)==0&&!c->allocs);
+ extended_fixture();put32(image+FBB+512+MDH+12,16);
+ assert(core->mount(h,&v,&info)==IFS_FS_CORRUPT&&!v&&!c->allocs);
+ extended_fixture();put32(image+ROOT_DATA+0x3b8+8,999);
+ assert(core->mount(h,&v,&info)==IFS_FS_CORRUPT&&!v&&!c->allocs);
+ extended_fixture();put32(image+ROOT+4u*8192u+36,1);
+ assert(core->mount(h,&v,&info)==0&&v);
+ assert(core->stat(v,"/fragment.bin",&e)==IFS_FS_CORRUPT);
+ assert(core->unmount(v)==0&&!c->allocs);
+ h->capabilities&=~IFS_FS_HOST_EXCLUSIVE;
+}
+
 static void expect(const IfsFsCoreOpsV2 *core,IfsFsHostRuntimeV2*h,struct context*c,int want){
  uint32_t v=99;int rc=core->probe(h,&v);
  if(rc!=want)fprintf(stderr,"expected %d got %d at sector %u\n",want,rc,c->sector);
@@ -173,6 +223,7 @@ int main(int argc,char **argv){
   memset(image,0,SIZE);fixture();put32(image+ROOT,0);expect(core,&h,&c,IFS_FS_CORRUPT);
 
   mount_fixture(core,&h,&c);
+  check_extended(core,&h,&c);
  }
  if(c.fd>=0)assert(!close(c.fd));
  free(image);assert(!dlclose(lib));

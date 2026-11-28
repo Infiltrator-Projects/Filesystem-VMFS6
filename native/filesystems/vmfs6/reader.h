@@ -114,8 +114,10 @@ static int check_entry(const uint8_t*p,const Catalogue*c,uint32_t entry,uint32_t
  if(le32(p)!=magic||le32(p+36)||le32(d)!=entry||!*bits||*bits>c->items||*free>*bits)return IFS_FS_CORRUPT;
  uint64_t first=(uint64_t)entry*c->items;
  if(first>=c->total||*bits!=(c->total-first<c->items?c->total-first:c->items))return IFS_FS_CORRUPT;
- unsigned count=0;for(unsigned j=0;j<*bits;j++)if(d[16+j/8u]&(1u<<(j%8u)))count++;
- if(count!=*free)return IFS_FS_CORRUPT;
+ unsigned count=0,first_free=*bits;
+ for(unsigned j=0;j<*bits;j++)if(d[16+j/8u]&(1u<<(j%8u))){if(first_free==*bits)first_free=j;count++;}
+ /* The first-free hint is interpreted only when a free item exists. */
+ if(count!=*free||(*free&&le32(d+12)!=first_free))return IFS_FS_CORRUPT;
  return 0;
 }
 static int valid_inode(Volume*v,const uint8_t*p,uint32_t id){
@@ -160,7 +162,7 @@ static int name_match(const uint8_t*p,const char*q,unsigned n){for(unsigned i=0;
  * at the point of resolution; symlinks are not followed automatically. */
 typedef struct {uint32_t id,record,type;unsigned length;char name[129];} Dirent;
 static int scan(Volume*v,const uint8_t*i,const char*name,unsigned n,uint32_t index,Dirent*out){
- uint64_t size=le64(i+MDH+20);unsigned matched=0;uint32_t ordinal=0;
+ uint64_t size=le64(i+MDH+20);unsigned matched=0,dots=0;uint32_t ordinal=0;
  if(le32(i+MDH+12)!=2u||!size||size>MAX_SCAN)return IFS_FS_UNSUPPORTED;
  if(size<0x11040u)return IFS_FS_UNSUPPORTED;
  for(uint64_t slot=0;slot<MAX_SCAN/DIR_RECORD;slot++){
@@ -176,11 +178,19 @@ static int scan(Volume*v,const uint8_t*i,const char*name,unsigned n,uint32_t ind
   if(DIR_RECORD>size-off)return IFS_FS_CORRUPT;
   uint8_t p[DIR_RECORD];int rc=file_read(v,i,off,p,sizeof(p),0);if(rc)return rc;
   uint32_t type=le32(p),id=le32(p+4),record=le32(p+8);
-  if(!id)continue;
+  if(!id){if(slot<2u)return IFS_FS_CORRUPT;continue;}
   unsigned len=0;while(len<128u&&p[DIR_NAME+len]){if(p[DIR_NAME+len]=='/')return IFS_FS_CORRUPT;len++;}
   if(!len||type<2u||type>6u||(id&7u)!=4u)return IFS_FS_CORRUPT;
-  int dot=(len==1u&&p[DIR_NAME]=='.')||(len==2u&&p[DIR_NAME]=='.'&&p[DIR_NAME+1]=='.');
-  if(dot)continue;
+  unsigned dot=(len==1u&&p[DIR_NAME]=='.')?1u:(len==2u&&p[DIR_NAME]=='.'&&p[DIR_NAME+1]=='.')?2u:0u;
+  if(dot){
+   /* The dedicated dot slots are part of the native directory header.
+    * Verify the self identity, record identity and type before hiding
+    * them from Common's enumeration. */
+   if(slot!=dot-1u||(dots&dot)||type!=2u)return IFS_FS_CORRUPT;
+   if(dot==1u&&(id!=le32(i+MDH)||record!=le32(i+MDH+4)))return IFS_FS_CORRUPT;
+   dots|=dot;continue;
+  }
+  if(slot<2u)return IFS_FS_CORRUPT;
   if((name&&len==n&&name_match(p+DIR_NAME,name,n))||(!name&&ordinal==index)){
    if(++matched!=1u)return IFS_FS_CORRUPT;
    out->id=id;out->record=record;out->type=type;out->length=len;
@@ -189,6 +199,7 @@ static int scan(Volume*v,const uint8_t*i,const char*name,unsigned n,uint32_t ind
   }
   ordinal++;
  }
+ if(dots!=3u)return IFS_FS_CORRUPT;
  return matched?0:name?IFS_FS_NOT_FOUND:IFS_FS_END;
 }
 static int lookup(Volume*v,const uint8_t*i,const char*name,unsigned n,int boot,uint8_t*out){
